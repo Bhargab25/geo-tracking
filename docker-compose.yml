@@ -1,0 +1,96 @@
+services:
+  # 1. Spatial Database Engine
+  postgres:
+    image: postgis/postgis:16-3.4
+    container_name: logistics_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_DATABASE:-geofence_db}
+      POSTGRES_USER: ${DB_USERNAME:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-secret123}
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./docker-compose/postgres/initdb.sh:/docker-entrypoint-initdb.d/initdb.sh
+    networks:
+      - logistics_network
+
+  # 2. High-Speed Ingestion & Job Queue Memory Layer
+  redis:
+    image: redis:7.2-alpine
+    container_name: logistics_redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redisdata:/data
+    networks:
+      - logistics_network
+
+  # 3. Fast Ingestion REST API (Node.js)
+  node-ingest:
+    build:
+      context: ./node-ingest
+      dockerfile: Dockerfile
+    container_name: logistics_node_ingest
+    restart: unless-stopped
+    ports:
+      - "${NODE_PORT:-3000}:3000"
+    environment:
+      NODE_ENV: development
+      PORT: 3000
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+    depends_on:
+      - redis
+    networks:
+      - logistics_network
+
+  # 4. Core Logic, Queue Workers & GraphQL API (Laravel)
+  laravel-backend:
+    build:
+      context: ./laravel-backend
+      dockerfile: Dockerfile
+    container_name: logistics_laravel
+    restart: unless-stopped
+    ports:
+      - "${LARAVEL_PORT:-8000}:8000"
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+    volumes:
+      - ./laravel-backend:/var/www/html
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - logistics_network
+
+  # 5. Live Command Center Mapping Dashboard (React)
+  react-dashboard:
+    build:
+      context: ./react-dashboard
+      dockerfile: Dockerfile
+    container_name: logistics_react_dashboard
+    restart: unless-stopped
+    ports:
+      - "${REACT_PORT:-5173}:5173"
+    volumes:
+      - ./react-dashboard:/app
+      - /app/node_modules
+    networks:
+      - logistics_network
+
+networks:
+  logistics_network:
+    driver: bridge
+
+volumes:
+  pgdata:
+    driver: local
+  redisdata:
+    driver: local
