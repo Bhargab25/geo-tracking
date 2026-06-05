@@ -63,7 +63,28 @@ services:
       REDIS_HOST: redis
       REDIS_PORT: 6379
     volumes:
-      - ./laravel-backend:/var/www/html
+      - ./laravel-backend/laravel:/var/www/html
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - logistics_network
+
+  # 4b. Telemetry Consumer Service (Laravel Daemon)
+  laravel-worker:
+    build:
+      context: ./laravel-backend
+      dockerfile: Dockerfile
+    container_name: logistics_laravel_worker
+    restart: unless-stopped
+    command: php artisan telemetry:consume
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+    volumes:
+      - ./laravel-backend/laravel:/var/www/html
     depends_on:
       - postgres
       - redis
